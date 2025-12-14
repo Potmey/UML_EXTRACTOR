@@ -1,46 +1,54 @@
-// Правила для извлечения сущностей из текста
+// Улучшенные правила для извлечения сущностей
 const ENTITY_RULES = {
     AGENT: [
-        'customer', 'client', 'user', 'member',
-        'support agent', 'agent', 'representative', 'assistant',
-        'finance department', 'finance team', 'accounting',
-        'system', 'software', 'application', 'platform',
-        'manager', 'supervisor', 'director',
-        'employee', 'staff', 'worker', 'team',
+        // Основные агенты
+        'customer', 'client', 'user',
+        'support agent', 'agent', 'representative',
+        'finance department', 'finance',
+        'system', 'software', 'application',
+        'manager', 'supervisor',
+        'employee', 'staff',
         'admin', 'administrator',
-        'department', 'division', 'unit'
+        'department', 'team'
     ],
     
     TASK: [
-        'submit', 'send', 'provide', 'give',
-        'review', 'check', 'examine', 'verify',
-        'approve', 'authorize', 'confirm', 'validate',
-        'process', 'handle', 'manage', 'execute',
-        'receive', 'get', 'obtain', 'collect',
-        'inform', 'notify', 'tell', 'update',
-        'create', 'generate', 'produce',
-        'update', 'modify', 'change', 'edit',
-        'delete', 'remove', 'cancel',
-        'pay', 'charge', 'invoice',
-        'refund', 'return', 'reimburse'
+        // Основные действия
+        'submit', 'sends', 'provides',
+        'review', 'checks', 'examines',
+        'approve', 'authorizes', 'confirms',
+        'process', 'handles', 'executes',
+        'receive', 'gets', 'obtains',
+        'inform', 'notifies', 'tells',
+        'create', 'generates',
+        'update', 'modifies',
+        'delete', 'removes',
+        'pay', 'charges',
+        'refund', 'returns'
     ],
     
     CONDITION: [
-        'if', 'when', 'whenever', 'in case',
+        'if', 'when', 'whenever',
         'else', 'otherwise',
-        'provided that', 'assuming', 'given that',
-        'unless', 'except'
+        'provided that', 'assuming'
     ]
 };
 
-// Синонимы и варианты написания
-const WORD_VARIANTS = {
+// Словарь синонимов и форм слов
+const WORD_FORMS = {
+    // Глаголы
     'submits': 'submit',
     'submitted': 'submit',
     'submitting': 'submit',
+    'sends': 'send',
+    'sent': 'send',
+    'sending': 'send',
     'reviews': 'review',
     'reviewed': 'review',
     'reviewing': 'review',
+    'checks': 'check',
+    'checked': 'check',
+    'checking': 'check',
     'approves': 'approve',
     'approved': 'approve',
     'approving': 'approve',
@@ -53,139 +61,208 @@ const WORD_VARIANTS = {
     'informs': 'inform',
     'informed': 'inform',
     'informing': 'inform',
+    
+    // Существительные
     'customers': 'customer',
+    'clients': 'client',
+    'users': 'user',
     'agents': 'agent',
+    'representatives': 'representative',
     'departments': 'department',
     'systems': 'system',
     'managers': 'manager',
     'employees': 'employee'
 };
 
-// Сложные шаблоны для поиска
-const PATTERNS = {
-    AGENT_PATTERNS: [
-        /the\s+([a-z]+\s+)*(customer|client|user)/gi,
-        /([a-z]+\s+)*(agent|representative|assistant)/gi,
-        /([a-z]+\s+)*(department|team|division)/gi,
-        /([a-z]+\s+)*(system|software|application)/gi
-    ],
+// Шаблоны для сложных фраз
+const PHRASE_PATTERNS = [
+    // Агенты
+    { pattern: /\b(the\s+)?customer\b/gi, type: 'AGENT' },
+    { pattern: /\b(the\s+)?support\s+agent\b/gi, type: 'AGENT' },
+    { pattern: /\b(the\s+)?finance\s+(department|team)\b/gi, type: 'AGENT' },
+    { pattern: /\b(the\s+)?system\b/gi, type: 'AGENT' },
     
-    TASK_PATTERNS: [
-        /(submit|send|provide)\s+a\s+([a-z]+\s+)*request/gi,
-        /(review|check|examine)\s+the\s+([a-z]+\s+)*/gi,
-        /(approve|authorize|confirm)\s+the\s+([a-z]+\s+)*/gi,
-        /(process|handle|execute)\s+the\s+([a-z]+\s+)*/gi,
-        /(receive|get|obtain)\s+a\s+([a-z]+\s+)*/gi,
-        /(inform|notify|tell)\s+the\s+([a-z]+\s+)*/gi
-    ],
+    // Задачи с контекстом
+    { pattern: /\bsubmits?\s+(a\s+)?(refund\s+)?request\b/gi, type: 'TASK' },
+    { pattern: /\breviews?\s+the\s+request\b/gi, type: 'TASK' },
+    { pattern: /\bapproves?\s+the\s+refund\b/gi, type: 'TASK' },
+    { pattern: /\bprocesses?\s+the\s+payment\b/gi, type: 'TASK' },
+    { pattern: /\breceives?\s+a\s+confirmation\s+email\b/gi, type: 'TASK' },
+    { pattern: /\binforms?\s+the\s+customer\b/gi, type: 'TASK' },
     
-    CONDITION_PATTERNS: [
-        /if\s+the\s+([a-z]+\s+)*/gi,
-        /when\s+the\s+([a-z]+\s+)*/gi,
-        /provided\s+that\s+the\s+([a-z]+\s+)*/gi,
-        /else\s+(the\s+)*([a-z]+\s+)*/gi
-    ]
-};
+    // Условия
+    { pattern: /\bif\s+the\s+request\s+is\s+valid\b/gi, type: 'CONDITION' },
+    { pattern: /\belse\b/gi, type: 'CONDITION' },
+    { pattern: /\botherwise\b/gi, type: 'CONDITION' }
+];
 
 // Цвета для типов сущностей
 const ENTITY_COLORS = {
-    AGENT: '#7FDBFF',
-    TASK: '#FFDC00',
-    CONDITION: '#FF851B',
-    O: '#DDDDDD'
+    AGENT: '#7FDBFF',    // Голубой
+    TASK: '#FFDC00',     // Желтый
+    CONDITION: '#FF851B', // Оранжевый
+    O: '#DDDDDD'         // Серый
 };
 
-// Функция для нормализации слова
+// Нормализация слова
 function normalizeWord(word) {
-    word = word.toLowerCase().trim();
+    if (!word || typeof word !== 'string') return '';
     
-    // Убираем пунктуацию в конце слова
-    word = word.replace(/[.,;!?]$/, '');
+    let normalized = word.toLowerCase().trim();
+    
+    // Убираем пунктуацию
+    normalized = normalized.replace(/[.,;!?':"]+$/g, '');
     
     // Проверяем варианты написания
-    if (WORD_VARIANTS[word]) {
-        return WORD_VARIANTS[word];
+    if (WORD_FORMS[normalized]) {
+        return WORD_FORMS[normalized];
     }
     
-    return word;
-}
-
-// Функция для проверки, является ли слово сущностью
-function getEntityType(word) {
-    const normalized = normalizeWord(word);
-    
-    // Проверяем правила для каждого типа
-    for (const [type, words] of Object.entries(ENTITY_RULES)) {
-        if (words.includes(normalized)) {
-            return type;
-        }
-    }
-    
-    return 'O'; // Other
-}
-
-// Функция для извлечения сложных фраз
-function extractComplexPhrases(text, patterns, entityType) {
-    const entities = [];
-    
-    for (const pattern of patterns) {
-        let match;
-        while ((match = pattern.exec(text)) !== null) {
-            entities.push({
-                text: match[0].trim(),
-                type: entityType,
-                start: match.index,
-                end: match.index + match[0].length
-            });
-        }
-    }
-    
-    return entities;
+    return normalized;
 }
 
 // Основная функция извлечения сущностей
 function extractEntities(text) {
+    if (!text || typeof text !== 'string') {
+        return [];
+    }
+    
     const entities = [];
-    const words = text.split(/\s+/);
+    const words = text.match(/\b[\w']+(?:\s+[\w']+)*\b/g) || [];
     
-    // Извлекаем сложные фразы
-    const complexEntities = [
-        ...extractComplexPhrases(text, PATTERNS.AGENT_PATTERNS, 'AGENT'),
-        ...extractComplexPhrases(text, PATTERNS.TASK_PATTERNS, 'TASK'),
-        ...extractComplexPhrases(text, PATTERNS.CONDITION_PATTERNS, 'CONDITION')
-    ];
+    // Сначала обрабатываем сложные фразы
+    const processedIndices = new Set();
     
-    // Сортируем по позиции
-    complexEntities.sort((a, b) => a.start - b.start);
-    
-    // Извлекаем отдельные слова
-    let currentIndex = 0;
-    
-    for (const complex of complexEntities) {
-        // Добавляем слова до сложной фразы
-        while (currentIndex < complex.start) {
-            const wordEnd = text.indexOf(' ', currentIndex);
-            if (wordEnd === -1 || wordEnd > complex.start) break;
+    for (const pattern of PHRASE_PATTERNS) {
+        const regex = new RegExp(pattern.pattern.source, 'gi');
+        let match;
+        
+        while ((match = regex.exec(text)) !== null) {
+            const phrase = match[0];
+            const start = match.index;
+            const end = start + phrase.length;
             
-            const word = text.substring(currentIndex, wordEnd);
-            if (word.trim()) {
-                entities.push([word.trim(), getEntityType(word)]);
+            // Проверяем, не обработали ли мы уже эту часть текста
+            let alreadyProcessed = false;
+            for (let i = start; i < end; i++) {
+                if (processedIndices.has(i)) {
+                    alreadyProcessed = true;
+                    break;
+                }
             }
-            currentIndex = wordEnd + 1;
+            
+            if (!alreadyProcessed) {
+                // Добавляем фразу как сущность
+                entities.push([phrase, pattern.type]);
+                
+                // Помечаем индексы как обработанные
+                for (let i = start; i < end; i++) {
+                    processedIndices.add(i);
+                }
+            }
+        }
+    }
+    
+    // Затем обрабатываем отдельные слова
+    let currentIndex = 0;
+    const textLower = text.toLowerCase();
+    
+    while (currentIndex < text.length) {
+        // Пропускаем уже обработанные символы
+        if (processedIndices.has(currentIndex)) {
+            currentIndex++;
+            continue;
         }
         
-        // Добавляем сложную фразу
-        entities.push([complex.text, complex.type]);
-        currentIndex = complex.end;
+        // Ищем следующее слово
+        const wordMatch = textLower.substring(currentIndex).match(/\b\w+\b/);
+        if (!wordMatch) break;
+        
+        const wordStart = currentIndex + wordMatch.index;
+        const wordEnd = wordStart + wordMatch[0].length;
+        const word = text.substring(wordStart, wordEnd);
+        
+        // Проверяем, не входит ли слово в уже обработанную фразу
+        let inProcessedPhrase = false;
+        for (let i = wordStart; i < wordEnd; i++) {
+            if (processedIndices.has(i)) {
+                inProcessedPhrase = true;
+                break;
+            }
+        }
+        
+        if (!inProcessedPhrase) {
+            const normalized = normalizeWord(word);
+            let type = 'O';
+            
+            // Проверяем правила
+            if (ENTITY_RULES.AGENT.includes(normalized)) {
+                type = 'AGENT';
+            } else if (ENTITY_RULES.TASK.includes(normalized)) {
+                type = 'TASK';
+            } else if (ENTITY_RULES.CONDITION.includes(normalized)) {
+                type = 'CONDITION';
+            }
+            
+            entities.push([word, type]);
+        }
+        
+        currentIndex = wordEnd;
     }
     
-    // Добавляем оставшиеся слова
-    const remainingWords = text.substring(currentIndex).split(/\s+/);
-    for (const word of remainingWords) {
-        if (word.trim()) {
-            entities.push([word.trim(), getEntityType(word)]);
+    // Сортируем по позиции в тексте
+    entities.sort((a, b) => {
+        const aIndex = text.indexOf(a[0]);
+        const bIndex = text.indexOf(b[0]);
+        return aIndex - bIndex;
+    });
+    
+    return entities;
+}
+
+// Функция для группировки последовательных сущностей одного типа
+function groupEntities(entities) {
+    if (!entities || entities.length === 0) return [];
+    
+    const grouped = [];
+    let currentGroup = [];
+    let currentType = null;
+    
+    for (const [word, type] of entities) {
+        if (type === currentType && type !== 'O') {
+            // Продолжаем текущую группу
+            currentGroup.push(word);
+        } else {
+            // Сохраняем предыдущую группу
+            if (currentGroup.length > 0) {
+                grouped.push([currentGroup.join(' '), currentType]);
+            }
+            
+            // Начинаем новую группу
+            currentGroup = [word];
+            currentType = (type === 'O' ? null : type);
         }
     }
     
-    return entities;
+    // Добавляем последнюю группу
+    if (currentGroup.length > 0) {
+        grouped.push([currentGroup.join(' '), currentType]);
+    }
+    
+    // Добавляем отдельные слова типа O
+    const result = [];
+    for (const [text, type] of grouped) {
+        if (type === null) {
+            // Разбиваем на отдельные слова для типа O
+            text.split(' ').forEach(word => {
+                if (word.trim()) {
+                    result.push([word.trim(), 'O']);
+                }
+            });
+        } else {
+            result.push([text, type]);
+        }
+    }
+    
+    return result;
 }
