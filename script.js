@@ -302,4 +302,258 @@ class BPMNExtractor {
             }
         }
         
-        if (sources
+        if (sources.length === 0) {
+            return null;
+        }
+        
+        const trace = {
+            type: "sankey",
+            orientation: "h",
+            node: {
+                pad: 15,
+                thickness: 20,
+                line: {
+                    color: "black",
+                    width: 0.5
+                },
+                label: labels,
+                color: labels.map((_, i) => 
+                    `hsl(${(i * 360) / labels.length}, 70%, 50%)`
+                )
+            },
+            link: {
+                source: sources,
+                target: targets,
+                value: values
+            }
+        };
+        
+        const layout = {
+            title: "Resource Flow Diagram",
+            font: { size: 10 },
+            width: 800,
+            height: 400
+        };
+        
+        return { trace, layout };
+    }
+    
+    // Вспомогательная функция для обрезки текста
+    truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
+    }
+}
+
+// Инициализация приложения
+document.addEventListener('DOMContentLoaded', function() {
+    const extractor = new BPMNExtractor();
+    const inputText = document.getElementById('inputText');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const loadExampleBtn = document.getElementById('loadExample');
+    const clearTextBtn = document.getElementById('clearText');
+    const copyPlantUMLBtn = document.getElementById('copyPlantUML');
+    const downloadDiagramBtn = document.getElementById('downloadDiagram');
+    const loadingDiv = document.getElementById('loading');
+    
+    // Пример текста по умолчанию
+    const exampleText = `The customer submits a refund request, the support agent reviews the request and if the request is valid, the finance department approves the refund, the system processes the payment, the customer receives a confirmation email else the support agent informs the customer.`;
+    
+    // Устанавливаем пример текста
+    inputText.value = exampleText;
+    
+    // Загрузка примера
+    loadExampleBtn.addEventListener('click', function() {
+        inputText.value = exampleText;
+    });
+    
+    // Очистка текста
+    clearTextBtn.addEventListener('click', function() {
+        inputText.value = '';
+        clearResults();
+    });
+    
+    // Копирование PlantUML кода
+    copyPlantUMLBtn.addEventListener('click', function() {
+        const plantUMLCode = document.getElementById('plantUMLCode');
+        if (plantUMLCode.textContent) {
+            navigator.clipboard.writeText(plantUMLCode.textContent)
+                .then(() => {
+                    showNotification('PlantUML code copied to clipboard!');
+                })
+                .catch(err => {
+                    console.error('Failed to copy:', err);
+                    showNotification('Failed to copy to clipboard', 'error');
+                });
+        }
+    });
+    
+    // Скачивание диаграммы
+    downloadDiagramBtn.addEventListener('click', function() {
+        const plantUMLImage = document.querySelector('#plantUMLImage img');
+        if (plantUMLImage && plantUMLImage.src) {
+            const link = document.createElement('a');
+            link.href = plantUMLImage.src;
+            link.download = 'bpmn-diagram.svg';
+            link.click();
+        } else {
+            showNotification('No diagram available to download', 'warning');
+        }
+    });
+    
+    // Анализ текста
+    analyzeBtn.addEventListener('click', async function() {
+        const text = inputText.value.trim();
+        
+        if (!text) {
+            showNotification('Please enter some text to analyze.', 'warning');
+            return;
+        }
+        
+        // Показать индикатор загрузки
+        loadingDiv.style.display = 'block';
+        analyzeBtn.disabled = true;
+        
+        // Имитация обработки (в реальности мгновенная)
+        setTimeout(() => {
+            try {
+                const results = extractor.analyzeText(text);
+                displayResults(results);
+                showNotification('Analysis completed successfully!', 'success');
+            } catch (error) {
+                console.error('Error:', error);
+                showNotification('Error: ' + error.message, 'error');
+            } finally {
+                // Скрыть индикатор загрузки
+                loadingDiv.style.display = 'none';
+                analyzeBtn.disabled = false;
+            }
+        }, 500); // Небольшая задержка для UX
+    });
+    
+    // Функция отображения результатов
+    function displayResults(results) {
+        // 1. Извлеченные сущности
+        document.getElementById('entitiesResult').innerHTML = results.entitiesHtml;
+        
+        // 2. Структура процесса
+        document.getElementById('structureResult').innerHTML = results.structureHtml;
+        
+        // 3. PlantUML код и диаграмма
+        const plantUMLCode = document.getElementById('plantUMLCode');
+        const plantUMLImage = document.getElementById('plantUMLImage');
+        
+        plantUMLCode.textContent = results.plantuml;
+        
+        plantUMLImage.innerHTML = `
+            <div class="diagram-container">
+                <img src="${results.plantumlUrl}" 
+                     alt="BPMN Diagram" 
+                     style="max-width: 100%; height: auto;"
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/800x400?text=Diagram+Failed+to+Load'">
+            </div>
+        `;
+        
+        // 4. Матрица взаимодействий
+        const matrixData = results.interactionMatrix;
+        const matrixHtml = extractor.visualizeMatrix(matrixData);
+        document.getElementById('matrixResult').innerHTML = matrixHtml;
+        
+        // 5. Heatmap
+        const heatmapData = extractor.createHeatmap(matrixData);
+        const heatmapDiv = document.getElementById('heatmapResult');
+        
+        if (heatmapData) {
+            heatmapDiv.innerHTML = '<div id="heatmapPlot" class="heatmap-container"></div>';
+            Plotly.newPlot('heatmapPlot', [heatmapData.trace], heatmapData.layout);
+        } else {
+            heatmapDiv.innerHTML = '<p class="empty-state">No data for heatmap</p>';
+        }
+        
+        // 6. Sankey диаграмма
+        const sankeyData = extractor.createSankey(matrixData);
+        const sankeyDiv = document.getElementById('sankeyResult');
+        
+        if (sankeyData) {
+            sankeyDiv.innerHTML = '<div id="sankeyPlot" style="width: 100%; height: 400px;"></div>';
+            Plotly.newPlot('sankeyPlot', [sankeyData.trace], sankeyData.layout);
+        } else {
+            sankeyDiv.innerHTML = '<p class="empty-state">No data for flow diagram</p>';
+        }
+    }
+    
+    // Функция очистки результатов
+    function clearResults() {
+        document.getElementById('entitiesResult').innerHTML = 
+            '<p class="empty-state">Entities will appear here after analysis</p>';
+        document.getElementById('structureResult').innerHTML = 
+            '<p class="empty-state">Process structure will appear here</p>';
+        document.getElementById('plantUMLCode').textContent = '';
+        document.getElementById('plantUMLImage').innerHTML = '';
+        document.getElementById('matrixResult').innerHTML = 
+            '<p class="empty-state">Interaction matrix will appear here</p>';
+        document.getElementById('heatmapResult').innerHTML = 
+            '<p class="empty-state">Heatmap will appear here</p>';
+        document.getElementById('sankeyResult').innerHTML = 
+            '<p class="empty-state">Flow diagram will appear here</p>';
+    }
+    
+    // Функция показа уведомлений
+    function showNotification(message, type = 'info') {
+        // Создаем уведомление
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.innerHTML = `
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 
+                              type === 'error' ? 'exclamation-circle' : 
+                              type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        `;
+        
+        // Добавляем стили
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: ${type === 'success' ? '#10b981' : 
+                         type === 'error' ? '#ef4444' : 
+                         type === 'warning' ? '#f59e0b' : '#3b82f6'};
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Удаляем через 3 секунды
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => {
+                document.body.removeChild(notification);
+            }, 300);
+        }, 3000);
+    }
+    
+    // Добавляем CSS анимации для уведомлений
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Автоматический анализ примера при загрузке
+    analyzeBtn.click();
+});
